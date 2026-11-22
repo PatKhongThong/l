@@ -3,7 +3,7 @@ services:
     name: starship-multiplayer-relay
     runtime: node
     plan: free
-    buildCommand: ""
+    buildCommand: echo "Ready"
     startCommand: node server/multiplayerServer.mjs
     healthCheckPath: /
 
