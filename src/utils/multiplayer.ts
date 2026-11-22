@@ -45,6 +45,8 @@ type Packet =
   | { type: 'leave'; room: string; playerId: string };
 
 export function getDefaultWsUrl(): string {
+  const envUrl = (import.meta as unknown as { env?: Record<string, string> }).env?.VITE_WS_URL;
+  if (envUrl && envUrl.trim()) return envUrl.trim();
   const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   return `${proto}//${window.location.host}/ws`;
 }
