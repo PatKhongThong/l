@@ -19,6 +19,7 @@ export const AriaTerminal: React.FC = () => {
     toggleRedAlert,
     saveGame,
     loadGame,
+    clearSavedGame,
     applyTick,
     addLog,
     setActiveView,
@@ -109,11 +110,14 @@ export const AriaTerminal: React.FC = () => {
             <Bot size={14} /> ARIA AI COMPUTER, BLACK BOX RECORDER &amp; PERSISTENT CORE
           </span>
           <div style={{ display: 'flex', gap: 6 }}>
-            <button className="star-btn success" onClick={saveGame} style={{ padding: '3px 9px' }}>
-              <Save size={12} /> SAVE SIM
+            <button className="star-btn success" onClick={() => saveGame(false)} style={{ padding: '3px 9px' }}>
+              <Save size={12} /> SAVE NOW
             </button>
-            <button className="star-btn" onClick={() => loadGame()} style={{ padding: '3px 9px' }}>
-              <FolderOpen size={12} /> LOAD SIM
+            <button className="star-btn" onClick={() => loadGame(false)} style={{ padding: '3px 9px' }}>
+              <FolderOpen size={12} /> LOAD
+            </button>
+            <button className="star-btn danger" onClick={clearSavedGame} style={{ padding: '3px 8px' }} title="Clear Local Save">
+              WIPE SAVE
             </button>
             <button className="star-btn" onClick={() => setActiveView('bridge')} style={{ padding: '3px 8px' }}>
               <X size={13} /> CLOSE

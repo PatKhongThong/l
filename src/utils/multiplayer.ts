@@ -18,7 +18,7 @@ export interface RemotePlayer {
   job: MultiplayerJob;
   systemId: string;
   shipHostId: string;
-  playerMode: 'flight' | 'interior' | 'eva' | 'earth_cutscene' | 'earth_surface';
+  playerMode: 'flight' | 'interior' | 'eva' | 'earth_cutscene' | 'earth_surface' | 'earth_liftoff' | 'escape_pod';
   position: [number, number, number];
   quaternion: [number, number, number, number];
   interiorPos: [number, number, number];

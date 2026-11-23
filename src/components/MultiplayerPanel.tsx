@@ -37,6 +37,8 @@ export const MultiplayerPanel: React.FC = () => {
     leaveBoardedShip,
     setMpJob,
     sendFleetChat,
+    sendFleetCredits,
+    sendSquadPing,
     setActiveView,
   } = useShipStore();
 
@@ -270,6 +272,15 @@ export const MultiplayerPanel: React.FC = () => {
                           <strong style={{ color: '#6ee7b7' }}>{p.callsign}</strong> • {p.job} ({p.systemId.toUpperCase()})
                         </span>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <button
+                            className="star-btn success"
+                            style={{ padding: '2px 6px', fontSize: 8.5 }}
+                            disabled={credits < 1000}
+                            onClick={() => sendFleetCredits(p.callsign, 1000)}
+                            title="Wire 1,000 CR to this fleet pilot"
+                          >
+                            +1k CR
+                          </button>
                           {isBoardedHere ? (
                             <button className="star-btn warning" style={{ padding: '2px 7px', fontSize: 8.5 }} onClick={leaveBoardedShip}>
                               RETURN TO OWN SHIP
@@ -289,8 +300,18 @@ export const MultiplayerPanel: React.FC = () => {
 
             {/* Subspace Fleet Chat */}
             <div style={{ border: '1px solid var(--border-dim)', background: 'rgba(4, 10, 22, 0.8)', padding: 12, flex: 1, display: 'flex', flexDirection: 'column' }}>
-              <div style={{ fontSize: 10, color: 'var(--cyan)', letterSpacing: '0.16em', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
-                <Radio size={12} /> SUBSPACE FLEET CHAT
+              <div style={{ fontSize: 10, color: 'var(--cyan)', letterSpacing: '0.16em', marginBottom: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <Radio size={12} /> SUBSPACE FLEET CHAT
+                </span>
+                <button
+                  className="star-btn active"
+                  style={{ padding: '2px 8px', fontSize: 8.5 }}
+                  onClick={sendSquadPing}
+                  title="Drop a Squad Waypoint & broadcast your exact coordinates to fleet chat"
+                >
+                  📍 SQUAD PING
+                </button>
               </div>
               <div style={{ flex: 1, minHeight: 165, maxHeight: 220, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 5, fontSize: 10, marginBottom: 8 }}>
                 {fleetChat.length === 0 ? (

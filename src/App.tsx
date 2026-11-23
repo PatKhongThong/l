@@ -24,13 +24,15 @@ export const App: React.FC = () => {
   const playerMode = useShipStore((s) => s.playerMode);
   const activeView = useShipStore((s) => s.activeView);
 
-  // Auto-join ?fleet=CODE invite link on load
+  // Auto-load saved game on startup + Auto-join ?fleet=CODE invite link
   useEffect(() => {
+    const s = useShipStore.getState();
+    s.loadGame(true);
+
     const params = new URLSearchParams(window.location.search);
     const fleetCode = params.get('fleet');
     if (fleetCode) {
-      const s = useShipStore.getState();
-      s.connectMultiplayer(fleetCode.toUpperCase(), s.mpCallsign, getDefaultWsUrl());
+      s.connectMultiplayer(fleetCode.toUpperCase(), useShipStore.getState().mpCallsign, getDefaultWsUrl());
     }
   }, []);
 
@@ -146,6 +148,7 @@ export const App: React.FC = () => {
       if (!s.booted) return;
       s.tickStockMarket();
       s.checkAchievements();
+      s.saveGame(true); // Continuous silent auto-save every 6.5s so Earth parts, factories & space progress are never lost!
       if (s.pointDefenseOn && s.playerMode === 'flight') s.firePulseCannon();
       if (s.autoMinerOn && s.playerMode === 'flight') s.fireMiningLaser();
     }, 6500);
@@ -166,7 +169,7 @@ export const App: React.FC = () => {
           <StarshipScene />
           {playerMode === 'flight' ? (
             <CockpitHUD />
-          ) : playerMode === 'earth_cutscene' || playerMode === 'earth_surface' ? (
+          ) : playerMode === 'earth_cutscene' || playerMode === 'earth_surface' || playerMode === 'earth_liftoff' ? (
             <EarthSurfaceHUD />
           ) : (
             <InteriorEvaHUD />

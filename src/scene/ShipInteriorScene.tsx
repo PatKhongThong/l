@@ -6,6 +6,8 @@ import { findRoomAtPosition, SHIP_ROOMS } from '../data/shipInterior';
 import { useShipStore } from '../store/useShipStore';
 import { multiplayerClient, RemotePlayer } from '../utils/multiplayer';
 import { getDeckTexture } from '../utils/proceduralTextures';
+import { EscapePodBank } from './EscapePodBank';
+import { PhysicalPushButton, PhysicalToggleSwitch } from './TactileControls';
 
 const walkKeys: Record<string, boolean> = {};
 
@@ -93,6 +95,20 @@ export const ShipInteriorScene: React.FC = () => {
   const shipQuaternion = useShipStore((s) => s.quaternion);
   const deuteriumCores = useShipStore((s) => s.deuteriumCores);
   const coolantCanisters = useShipStore((s) => s.coolantCanisters);
+  const enginesOnline = useShipStore((s) => s.enginesOnline);
+  const shieldsOnline = useShipStore((s) => s.shieldsOnline);
+  const lifeSupportOnline = useShipStore((s) => s.lifeSupportOnline);
+  const internalGravityOnline = useShipStore((s) => s.internalGravityOnline);
+  const backupGeneratorOnline = useShipStore((s) => s.backupGeneratorOnline);
+  const headlights = useShipStore((s) => s.headlights);
+  const toggleSystem = useShipStore((s) => s.toggleSystem);
+  const toggleRedAlert = useShipStore((s) => s.toggleRedAlert);
+  const toggleHeadlights = useShipStore((s) => s.toggleHeadlights);
+  const loadDeuteriumCore = useShipStore((s) => s.loadDeuteriumCore);
+  const loadCoolantCanister = useShipStore((s) => s.loadCoolantCanister);
+  const triggerCoolantFlush = useShipStore((s) => s.triggerCoolantFlush);
+  const triggerFireSuppression = useShipStore((s) => s.triggerFireSuppression);
+  const setPlayerMode = useShipStore((s) => s.setPlayerMode);
 
   const deckTex = useMemo(() => getDeckTexture(), []);
   const initialInteriorPos = useShipStore.getState().interiorPos;
@@ -275,6 +291,24 @@ export const ShipInteriorScene: React.FC = () => {
         </mesh>
       </group>
 
+      {/* Industrial Corridor Steel Arch Ribs & Overhead Conduit Piping */}
+      {[-20, -10, 0, 10, 20, 30].map((rz) => (
+        <group key={rz} position={[0, 0, rz]}>
+          <mesh position={[-3.2, 2.2, 0]}>
+            <boxGeometry args={[0.28, 4.4, 0.35]} />
+            <meshStandardMaterial color="#182234" metalness={0.85} roughness={0.32} />
+          </mesh>
+          <mesh position={[3.2, 2.2, 0]}>
+            <boxGeometry args={[0.28, 4.4, 0.35]} />
+            <meshStandardMaterial color="#182234" metalness={0.85} roughness={0.32} />
+          </mesh>
+          <mesh position={[0, 4.2, 0]}>
+            <boxGeometry args={[6.6, 0.24, 0.35]} />
+            <meshStandardMaterial color="#1e293b" metalness={0.85} roughness={0.3} />
+          </mesh>
+        </group>
+      ))}
+
       {/* Glowing Central Corridor Spine Guide Lines */}
       <mesh position={[-1.4, 0.02, 3]} rotation={[-Math.PI / 2, 0, 0]}>
         <planeGeometry args={[0.12, 58]} />
@@ -331,31 +365,92 @@ export const ShipInteriorScene: React.FC = () => {
               </div>
             </Html>
 
-            {/* Room-Specific 3D Machinery */}
+            {/* Room-Specific 3D Machinery + REAL PHYSICAL CLICKABLE 3D SWITCHES & BUTTONS! */}
             {room.id === 'reactor-room' && (
-              <group position={[0, 2.2, 0]}>
-                <mesh>
-                  <cylinderGeometry args={[1.1, 1.1, 4.2, 16]} />
-                  <meshStandardMaterial
-                    color="#0ea5e9"
-                    emissive={redAlert ? '#ef4444' : '#00e5ff'}
-                    emissiveIntensity={1.6}
-                    transparent
-                    opacity={0.75}
+              <group>
+                <group position={[0, 2.2, 0]}>
+                  <mesh>
+                    <cylinderGeometry args={[1.1, 1.1, 4.2, 16]} />
+                    <meshStandardMaterial
+                      color="#0ea5e9"
+                      emissive={redAlert ? '#ef4444' : '#00e5ff'}
+                      emissiveIntensity={1.6}
+                      transparent
+                      opacity={0.75}
+                    />
+                  </mesh>
+                  <mesh ref={reactorRing1}>
+                    <torusGeometry args={[2.1, 0.14, 10, 28]} />
+                    <meshStandardMaterial color="#334155" metalness={0.9} roughness={0.2} />
+                  </mesh>
+                  <mesh ref={reactorRing2} rotation={[Math.PI / 2, 0, 0]}>
+                    <torusGeometry args={[1.7, 0.1, 10, 28]} />
+                    <meshBasicMaterial color={redAlert ? '#ef4444' : '#00e5ff'} />
+                  </mesh>
+                </group>
+                {/* Physical Reactor Control Pedestal with Clickable Switches */}
+                <group position={[0, 1.1, -3.2]}>
+                  <mesh>
+                    <boxGeometry args={[2.4, 1.2, 0.6]} />
+                    <meshStandardMaterial color="#131c2b" metalness={0.85} roughness={0.3} />
+                  </mesh>
+                  <PhysicalToggleSwitch
+                    position={[-0.65, 0.25, 0.32]}
+                    label="BACKUP GEN"
+                    active={backupGeneratorOnline}
+                    onToggle={() => toggleSystem('backupGeneratorOnline')}
                   />
-                </mesh>
-                <mesh ref={reactorRing1}>
-                  <torusGeometry args={[2.1, 0.14, 10, 28]} />
-                  <meshStandardMaterial color="#334155" metalness={0.9} roughness={0.2} />
-                </mesh>
-                <mesh ref={reactorRing2} rotation={[Math.PI / 2, 0, 0]}>
-                  <torusGeometry args={[1.7, 0.1, 10, 28]} />
-                  <meshBasicMaterial color={redAlert ? '#ef4444' : '#00e5ff'} />
-                </mesh>
+                  <PhysicalPushButton
+                    position={[0.1, 0.25, 0.32]}
+                    label="HALON SUPPRESS (-180K)"
+                    color="#ef4444"
+                    onPress={triggerFireSuppression}
+                  />
+                  <PhysicalPushButton
+                    position={[0.75, 0.25, 0.32]}
+                    label="VENT COOLANT"
+                    color="#22d3ee"
+                    onPress={triggerCoolantFlush}
+                  />
+                </group>
               </group>
             )}
 
-            {/* FUEL BAY: Glowing Deuterium Core Rack & Intake Cylinder */}
+            {/* MAIN ENGINEERING: Physical 3D Circuit Breaker Switch Wall! */}
+            {room.id === 'main-engineering' && (
+              <group position={[0, 1.25, -2.8]}>
+                <mesh>
+                  <boxGeometry args={[3.4, 1.4, 0.5]} />
+                  <meshStandardMaterial color="#111927" metalness={0.85} roughness={0.32} />
+                </mesh>
+                <PhysicalToggleSwitch
+                  position={[-1.15, 0.15, 0.28]}
+                  label="MAIN ENGINES"
+                  active={enginesOnline}
+                  onToggle={() => toggleSystem('enginesOnline')}
+                />
+                <PhysicalToggleSwitch
+                  position={[-0.4, 0.15, 0.28]}
+                  label="DEFLECTOR SHIELDS"
+                  active={shieldsOnline}
+                  onToggle={() => toggleSystem('shieldsOnline')}
+                />
+                <PhysicalToggleSwitch
+                  position={[0.35, 0.15, 0.28]}
+                  label="LIFE SUPPORT"
+                  active={lifeSupportOnline}
+                  onToggle={() => toggleSystem('lifeSupportOnline')}
+                />
+                <PhysicalToggleSwitch
+                  position={[1.1, 0.15, 0.28]}
+                  label="INTERNAL GRAVITY"
+                  active={internalGravityOnline}
+                  onToggle={() => toggleSystem('internalGravityOnline')}
+                />
+              </group>
+            )}
+
+            {/* FUEL BAY: Glowing Deuterium Core Intake + Physical 3D LOAD CORE Button! */}
             {room.id === 'fuel-bay' && (
               <group>
                 <mesh position={[0, 1.3, 0]}>
@@ -366,6 +461,13 @@ export const ShipInteriorScene: React.FC = () => {
                   <cylinderGeometry args={[0.55, 0.55, 2.1, 12]} />
                   <meshBasicMaterial color="#f59e0b" transparent opacity={0.85} />
                 </mesh>
+                <PhysicalPushButton
+                  position={[1.25, 1.3, 0.8]}
+                  rotation={[0, -0.5, 0]}
+                  label={`LOAD DEUTERIUM CORE (${deuteriumCores})`}
+                  color="#f59e0b"
+                  onPress={loadDeuteriumCore}
+                />
                 {Array.from({ length: Math.min(4, deuteriumCores) }).map((_, i) => (
                   <mesh key={i} position={[-2.2 + i * 0.85, 0.75, -2.2]}>
                     <cylinderGeometry args={[0.22, 0.22, 1.2, 10]} />
@@ -375,7 +477,7 @@ export const ShipInteriorScene: React.FC = () => {
               </group>
             )}
 
-            {/* COOLANT BAY: Cryogenic Liquid Helium Tanks & Canisters */}
+            {/* COOLANT BAY: Cryo Tanks + Physical 3D LOAD CANISTER & VENT Buttons! */}
             {room.id === 'coolant-bay' && (
               <group>
                 <mesh position={[-1.4, 1.4, 0]}>
@@ -386,6 +488,18 @@ export const ShipInteriorScene: React.FC = () => {
                   <cylinderGeometry args={[0.7, 0.7, 2.8, 16]} />
                   <meshStandardMaterial color="#083344" emissive="#22d3ee" emissiveIntensity={0.7} />
                 </mesh>
+                <PhysicalPushButton
+                  position={[-0.35, 1.25, 1.2]}
+                  label={`LOAD COOLANT CANISTER (${coolantCanisters})`}
+                  color="#22d3ee"
+                  onPress={loadCoolantCanister}
+                />
+                <PhysicalPushButton
+                  position={[0.45, 1.25, 1.2]}
+                  label="VENT COOLANT (-160K)"
+                  color="#38bdf8"
+                  onPress={triggerCoolantFlush}
+                />
                 {Array.from({ length: Math.min(4, coolantCanisters) }).map((_, i) => (
                   <mesh key={i} position={[-1.6 + i * 0.9, 0.65, -2.2]}>
                     <cylinderGeometry args={[0.2, 0.2, 1.0, 10]} />
@@ -463,8 +577,23 @@ export const ShipInteriorScene: React.FC = () => {
                 </mesh>
                 <mesh position={[0, 0.65, -0.3]} rotation={[-0.4, 0, 0]}>
                   <planeGeometry args={[3.8, 0.7]} />
-                  <meshBasicMaterial color="#00e5ff" transparent opacity={0.38} />
+                  <meshBasicMaterial color={redAlert ? '#ef4444' : '#00e5ff'} transparent opacity={0.38} />
                 </mesh>
+                {/* Physical Clickable Bridge Console Buttons */}
+                <PhysicalPushButton
+                  position={[-1.45, 0.5, 0.42]}
+                  rotation={[-0.6, 0, 0]}
+                  label={redAlert ? 'STAND DOWN RED ALERT' : 'ENGAGE RED ALERT'}
+                  color="#ef4444"
+                  onPress={toggleRedAlert}
+                />
+                <PhysicalToggleSwitch
+                  position={[1.45, 0.5, 0.42]}
+                  rotation={[-0.6, 0, 0]}
+                  label="SHIP HEADLIGHTS"
+                  active={headlights}
+                  onToggle={toggleHeadlights}
+                />
               </group>
             )}
 
@@ -525,15 +654,28 @@ export const ShipInteriorScene: React.FC = () => {
             )}
 
             {room.id === 'airlock' && (
-              <group position={[2.8, 1.6, 0]}>
-                <mesh>
-                  <boxGeometry args={[0.4, 2.8, 2.6]} />
-                  <meshStandardMaterial color="#7f1d1d" metalness={0.8} roughness={0.3} />
-                </mesh>
-                <mesh position={[-0.25, 0, 0]} rotation={[0, Math.PI / 2, 0]}>
-                  <torusGeometry args={[0.85, 0.08, 8, 20]} />
-                  <meshBasicMaterial color="#ef4444" />
-                </mesh>
+              <group>
+                {/* Outer EVA Airlock Hatch */}
+                <group position={[2.9, 1.6, 1.8]}>
+                  <mesh>
+                    <boxGeometry args={[0.4, 2.8, 2.4]} />
+                    <meshStandardMaterial color="#7f1d1d" metalness={0.8} roughness={0.3} />
+                  </mesh>
+                  <mesh position={[-0.25, 0, 0]} rotation={[0, Math.PI / 2, 0]}>
+                    <torusGeometry args={[0.8, 0.08, 8, 20]} />
+                    <meshBasicMaterial color="#ef4444" />
+                  </mesh>
+                  {/* Physical 3D EVA Depressurize Hatch Button */}
+                  <PhysicalPushButton
+                    position={[-0.3, -0.2, 1.55]}
+                    rotation={[0, -Math.PI / 2, 0]}
+                    label="DEPRESSURIZE & ENTER EVA"
+                    color="#ef4444"
+                    onPress={() => setPlayerMode('eva')}
+                  />
+                </group>
+                {/* Trio of High-Detail Industrial CP-12 Escape Pods (Matches Reference!) */}
+                <EscapePodBank />
               </group>
             )}
           </group>

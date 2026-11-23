@@ -11,7 +11,30 @@ import { starshipAudio } from '../utils/audio';
 import { FleetChatMessage, multiplayerClient, MultiplayerJob, RemotePlayer } from '../utils/multiplayer';
 
 export type CameraMode = 'cockpit' | 'external';
-export type PlayerMode = 'flight' | 'interior' | 'eva' | 'earth_cutscene' | 'earth_surface';
+export type PlayerMode =
+  | 'flight'
+  | 'interior'
+  | 'eva'
+  | 'earth_cutscene'
+  | 'earth_surface'
+  | 'earth_liftoff'
+  | 'escape_pod';
+
+export interface ExplosionFx {
+  id: string;
+  position: [number, number, number];
+  createdAt: number;
+  scale: number;
+}
+
+export const SPACE_RACE_GATES: Array<[number, number, number]> = [
+  [0, 14, -75],
+  [55, 28, -165],
+  [125, 16, -260],
+  [75, -8, -365],
+  [-45, 22, -310],
+  [-15, 14, -140],
+];
 
 export interface EngineModelDef {
   id:
@@ -488,6 +511,7 @@ export interface ShipState {
   flightAssist: boolean;
   autopilot: boolean;
   headlights: boolean;
+  hyperCruise: boolean;
 
   // Interior & EVA State
   interiorRoomId: string;
@@ -528,6 +552,12 @@ export interface ShipState {
   bankVault: number;
   unlockedAchievements: string[];
   bossActive: boolean;
+  raceActive: boolean;
+  raceGateIndex: number;
+  raceTimer: number;
+  bestRaceTime: number | null;
+  combatWave: number;
+  explosions: ExplosionFx[];
 
   // Fuel Bay, Coolant Bay, Combat & Upgrades
   deuteriumCores: number;
@@ -609,6 +639,7 @@ export interface ShipState {
   commsInbox: CommMessage[];
   lockedRooms: string[];
   escapePodsArmed: boolean;
+  openPodIndex: number | null;
   cargo: CargoHold;
   blackBox: BlackBoxEntry[];
   maintenanceHistory: MaintenanceRecord[];
@@ -634,6 +665,7 @@ export interface ShipState {
   toggleFlightAssist: () => void;
   toggleAutopilot: () => void;
   toggleHeadlights: () => void;
+  toggleHyperCruise: () => void;
   toggleSystem: (
     sys:
       | 'enginesOnline'
@@ -717,6 +749,11 @@ export interface ShipState {
   hostHoloDeckParty: () => void;
   triggerFireSuppression: () => void;
   checkAchievements: () => void;
+  startSpaceRace: () => void;
+  advanceRaceGate: () => void;
+  startCombatWave: () => void;
+  sendFleetCredits: (peerCallsign: string, amount: number) => void;
+  sendSquadPing: () => void;
   emergencyRefuelScoop: () => void;
 
   // Emergencies & Damage & EVA Repair
@@ -736,6 +773,9 @@ export interface ShipState {
   // Security / Comms / Cargo / Customization / Missions / Save
   toggleRoomLock: (roomId: string) => void;
   toggleEscapePods: () => void;
+  togglePodLid: (idx: number) => void;
+  launchEscapePod: (idx: number) => void;
+  recoverFromEscapePod: () => void;
   sendCommHail: (recipient: string) => void;
   tradeCargo: (item: keyof CargoHold, delta: number, unitPrice: number) => void;
   setShipCustomization: (name: string, liveryId: string) => void;
@@ -745,8 +785,9 @@ export interface ShipState {
   addLog: (message: string, level?: LogEntry['level']) => void;
   recordBlackBox: (event: string) => void;
   addMaintenanceRecord: (system: string, action: string, performedBy: string) => void;
-  saveGame: () => void;
-  loadGame: () => boolean;
+  saveGame: (silent?: boolean) => void;
+  loadGame: (silent?: boolean) => boolean;
+  clearSavedGame: () => void;
   resetShip: () => void;
   applyTick: (partial: Partial<ShipState>) => void;
 }
@@ -778,6 +819,7 @@ export const useShipStore = create<ShipState>((set, get) => ({
   flightAssist: true,
   autopilot: false,
   headlights: true,
+  hyperCruise: false,
 
   interiorRoomId: 'command-bridge',
   interiorPos: [0, 1.65, -12],
@@ -826,6 +868,12 @@ export const useShipStore = create<ShipState>((set, get) => ({
   bankVault: 0,
   unlockedAchievements: [],
   bossActive: false,
+  raceActive: false,
+  raceGateIndex: 0,
+  raceTimer: 0,
+  bestRaceTime: null,
+  combatWave: 0,
+  explosions: [],
 
   deuteriumCores: 3,
   coolantCanisters: 3,
@@ -942,6 +990,7 @@ export const useShipStore = create<ShipState>((set, get) => ({
   ],
   lockedRooms: [],
   escapePodsArmed: false,
+  openPodIndex: 1,
   cargo: {
     deuterium: 4,
     cryoMeds: 2,
@@ -1112,6 +1161,24 @@ export const useShipStore = create<ShipState>((set, get) => ({
   toggleHeadlights: () => {
     starshipAudio.playClick(650);
     set((s) => ({ headlights: !s.headlights }));
+  },
+
+  toggleHyperCruise: () => {
+    const s = get();
+    const next = !s.hyperCruise;
+    if (next && (!s.enginesOnline || s.fuel <= 1)) {
+      starshipAudio.playAlert('LOW');
+      s.addLog('HYPER-CRUISE BLOCKED: ENGINES OFFLINE OR NO FUEL', 'warn');
+      return;
+    }
+    starshipAudio.playWarp();
+    s.addLog(
+      next
+        ? 'HYPER-CRUISE DRIVE ENGAGED — DEEP-SPACE ULTRA-VELOCITY ACTIVE (REACH 25M–100M m WORLDS!)'
+        : 'HYPER-CRUISE DISENGAGED — SUB-LIGHT THRUSTERS',
+      next ? 'success' : 'info'
+    );
+    set({ hyperCruise: next });
   },
 
   toggleSystem: (sys) => {
@@ -1328,6 +1395,18 @@ export const useShipStore = create<ShipState>((set, get) => ({
       const nextHp = hitRaider.hp - dmg;
       if (nextHp <= 0) {
         starshipAudio.playExplosion();
+        const angle = hitRaider.phase + s.simTime * hitRaider.orbitSpeed;
+        const exPos: [number, number, number] = [
+          hitRaider.orbitCenter[0] + Math.cos(angle) * hitRaider.orbitRadius,
+          hitRaider.orbitCenter[1] + Math.sin(angle * 1.4) * 18,
+          hitRaider.orbitCenter[2] + Math.sin(angle) * hitRaider.orbitRadius,
+        ];
+        const newFx: ExplosionFx = {
+          id: `exp-${Date.now()}-${Math.random()}`,
+          position: exPos,
+          createdAt: performance.now(),
+          scale: hitRaider.id === 'boss-leviathan' ? 3.5 : 1.4,
+        };
         s.addLog(`RAIDER DESTROYED: ${hitRaider.name} (+${hitRaider.bounty} CR BOUNTY, +120 XP)`, 'success');
         s.recordBlackBox(`DESTROYED ${hitRaider.name}`);
         const remainingRaiders = s.raiders.filter((r) => r.id !== hitRaider.id);
@@ -1359,6 +1438,7 @@ export const useShipStore = create<ShipState>((set, get) => ({
 
         set({
           raiders: remainingRaiders,
+          explosions: [...s.explosions, newFx].slice(-8),
           credits: s.credits + extraCredits,
           xp: s.xp + extraXp,
           raidersDestroyed: s.raidersDestroyed + 1,
@@ -1875,14 +1955,11 @@ export const useShipStore = create<ShipState>((set, get) => ({
 
   launchFromEarth: () => {
     starshipAudio.playWarp();
-    get().addLog('LIFTOFF FROM TERRAN HEAVY SHIPYARDS — ENTERING SOLARIS PRIME ORBIT', 'success');
+    get().addLog('IGNITING ORBITAL ASCENT THRUSTERS — LIFTOFF FROM NEW GENEVA!', 'success');
     set({
-      playerMode: 'flight',
-      landedPlanetId: null,
+      playerMode: 'earth_liftoff',
+      earthCutsceneProgress: 0,
       activeView: 'bridge',
-      position: [190, 20, -225],
-      velocity: [0, 0, 12],
-      throttle: 0.25,
     });
   },
 
@@ -2359,6 +2436,100 @@ export const useShipStore = create<ShipState>((set, get) => ({
     }
   },
 
+  startSpaceRace: () => {
+    const s = get();
+    starshipAudio.playSuccess();
+    s.addLog('ORBITAL BOOST-RING RACE STARTED! FLY THROUGH ALL 6 GLOWING GATES FOR +15,000 CR!', 'success');
+    set({
+      currentSystemId: 'solaris-prime',
+      playerMode: 'flight',
+      activeView: 'bridge',
+      dockedStationId: null,
+      landedPlanetId: null,
+      position: [0, 14, 15],
+      velocity: [0, 0, -25],
+      quaternion: [0, 0, 0, 1],
+      raceActive: true,
+      raceGateIndex: 0,
+      raceTimer: 0,
+    });
+  },
+
+  advanceRaceGate: () => {
+    const s = get();
+    if (!s.raceActive) return;
+    starshipAudio.playSuccess();
+    const nextIdx = s.raceGateIndex + 1;
+    if (nextIdx >= SPACE_RACE_GATES.length) {
+      const timeSec = Number(s.raceTimer.toFixed(1));
+      const best = s.bestRaceTime === null ? timeSec : Math.min(s.bestRaceTime, timeSec);
+      s.addLog(`🏁 RACE COMPLETE IN ${timeSec}s! (+15,000 CR, +400 XP)`, 'success');
+      if (s.mpConnected) {
+        s.sendFleetChat(`🏁 Finished the Orbital Boost-Ring Race in ${timeSec}s!`);
+      }
+      set({
+        raceActive: false,
+        raceGateIndex: 0,
+        bestRaceTime: best,
+        credits: s.credits + 15000,
+        xp: s.xp + 400,
+      });
+    } else {
+      s.addLog(`BOOST GATE ${nextIdx}/${SPACE_RACE_GATES.length} CLEARED! (+TURBO SURGE)`, 'info');
+      set({ raceGateIndex: nextIdx });
+    }
+  },
+
+  startCombatWave: () => {
+    const s = get();
+    const nextWave = s.combatWave + 1;
+    starshipAudio.playAlert('MODERATE');
+    const count = Math.min(5, 2 + nextWave);
+    const spawned: RaiderDrone[] = [];
+    for (let i = 0; i < count; i++) {
+      spawned.push({
+        id: `wave-${nextWave}-${i}-${Date.now()}`,
+        name: `WAVE-${nextWave} GUNSHIP #${i + 1}`,
+        systemId: s.currentSystemId,
+        orbitCenter: [s.position[0], s.position[1], s.position[2] - 130],
+        orbitRadius: 55 + i * 18,
+        orbitSpeed: 0.28 + i * 0.04,
+        phase: (i / count) * Math.PI * 2,
+        hp: 80 + nextWave * 35,
+        maxHp: 80 + nextWave * 35,
+        bounty: 1400 + nextWave * 750,
+      });
+    }
+    s.addLog(`⚔ COMBAT WAVE ${nextWave} INBOUND! (${count} RAIDER GUNSHIPS — DESTROY FOR MASSIVE BOUNTIES!)`, 'alert');
+    if (s.mpConnected) {
+      s.sendFleetChat(`⚔ Triggered Co-Op Combat Wave ${nextWave} (${count} gunships)!`);
+    }
+    set({ combatWave: nextWave, raiders: [...s.raiders, ...spawned] });
+  },
+
+  sendFleetCredits: (peerCallsign, amount) => {
+    const s = get();
+    if (!s.mpConnected || s.credits < amount) return;
+    starshipAudio.playSuccess();
+    set({ credits: s.credits - amount });
+    multiplayerClient.send({
+      type: 'coop_reward',
+      room: s.mpRoom,
+      sender: s.mpCallsign,
+      missionTitle: `DIRECT CREDIT WIRE TO ${peerCallsign}`,
+      credits: amount,
+    });
+    s.addLog(`WIRED ${amount.toLocaleString()} CR TO FLEET SQUAD`, 'success');
+  },
+
+  sendSquadPing: () => {
+    const s = get();
+    if (!s.mpConnected) return;
+    starshipAudio.playRadio();
+    s.dropWaypoint();
+    s.sendFleetChat(`📍 SQUAD PING at [${Math.round(s.position[0])}, ${Math.round(s.position[1])}, ${Math.round(s.position[2])}] in ${s.currentSystemId.toUpperCase()}!`);
+  },
+
   emergencyRefuelScoop: () => {
     const s = get();
     if (s.fuel >= 25) return;
@@ -2626,6 +2797,25 @@ export const useShipStore = create<ShipState>((set, get) => ({
     set({ escapePodsArmed: next });
   },
 
+  togglePodLid: (idx) => {
+    starshipAudio.playDoor();
+    set((s) => ({ openPodIndex: s.openPodIndex === idx ? null : idx }));
+  },
+
+  launchEscapePod: (idx) => {
+    starshipAudio.playWarp();
+    const s = get();
+    s.addLog(`CP-12 ESCAPE POD #${idx + 1} EJECTED — EMERGENCY THRUSTERS FIRING!`, 'alert');
+    s.recordBlackBox(`EJECTED IN CP-12 ESCAPE POD #${idx + 1}`);
+    set({ playerMode: 'escape_pod', activeView: 'bridge', openPodIndex: null });
+  },
+
+  recoverFromEscapePod: () => {
+    starshipAudio.playSuccess();
+    get().addLog('ORBITAL RESCUE COMPLETE — RETURNED TO STARSHIP BRIDGE', 'success');
+    set({ playerMode: 'flight', activeView: 'bridge' });
+  },
+
   sendCommHail: (recipient) => {
     const s = get();
     if (!s.commsOnline) {
@@ -2760,13 +2950,53 @@ export const useShipStore = create<ShipState>((set, get) => ({
     }));
   },
 
-  saveGame: () => {
+  saveGame: (silent = false) => {
     const s = get();
     const payload = {
+      version: 5,
+      savedAt: Date.now(),
+      // Identity, Customization & Earth Parts
       shipName: s.shipName,
+      shipRegistry: s.shipRegistry,
       liveryId: s.liveryId,
+      shipClass: s.shipClass,
+      ownedShipClasses: s.ownedShipClasses,
+      installedEngineId: s.installedEngineId,
+      ownedEngines: s.ownedEngines,
+      engineConfig: s.engineConfig,
+      roofPart: s.roofPart,
+      aeroPart: s.aeroPart,
+      nosePart: s.nosePart,
+      boosterPart: s.boosterPart,
+      xenoMods: s.xenoMods,
+      underglowColor: s.underglowColor,
+      ownedParts: s.ownedParts,
+      hudTheme: s.hudTheme,
+      earthWeather: s.earthWeather,
+
+      // Earth Factories, Economy & Cargo
+      factories: s.factories,
+      cargoBayLevel: s.cargoBayLevel,
+      roboticArmOverdrive: s.roboticArmOverdrive,
+      stocks: s.stocks,
+      bankVault: s.bankVault,
+      credits: s.credits,
+      cargo: s.cargo,
+
+      // Position, Mode & Ship State
       currentSystemId: s.currentSystemId,
       position: s.position,
+      quaternion: s.quaternion,
+      landedPlanetId: s.landedPlanetId,
+      dockedStationId: s.dockedStationId,
+      playerMode:
+        s.playerMode === 'earth_cutscene'
+          ? 'earth_surface'
+          : s.playerMode === 'earth_liftoff'
+            ? 'flight'
+            : s.playerMode,
+      bestRaceTime: s.bestRaceTime,
+      combatWave: s.combatWave,
       hull: s.hull,
       shields: s.shields,
       fuel: s.fuel,
@@ -2775,12 +3005,23 @@ export const useShipStore = create<ShipState>((set, get) => ({
       deuteriumCores: s.deuteriumCores,
       coolantCanisters: s.coolantCanisters,
       boostCells: s.boostCells,
+      torpedoes: s.torpedoes,
       upgrades: s.upgrades,
       engineHealth: s.engineHealth,
       components: s.components,
-      credits: s.credits,
-      cargo: s.cargo,
+      reactorThrottle: s.reactorThrottle,
+      power: s.power,
+
+      // World Objects, Missions & Career
+      deployedSatellites: s.deployedSatellites,
+      waypoints: s.waypoints,
+      xp: s.xp,
+      peakSpeed: s.peakSpeed,
+      raidersDestroyed: s.raidersDestroyed,
+      asteroidsMined: s.asteroidsMined,
+      unlockedAchievements: s.unlockedAchievements,
       missions: s.missions,
+      activeMissionId: s.activeMissionId,
       discoveries: s.discoveries,
       scannedObjects: s.scannedObjects,
       discoveredSystems: s.discoveredSystems,
@@ -2791,24 +3032,60 @@ export const useShipStore = create<ShipState>((set, get) => ({
     };
     try {
       localStorage.setItem(SAVE_KEY, JSON.stringify(payload));
-      starshipAudio.playSuccess();
-      s.addLog('SIMULATION STATE SAVED TO PERSISTENT CORE', 'success');
+      if (!silent) {
+        starshipAudio.playSuccess();
+        s.addLog('FULL SIMULATION STATE SAVED (SHIP, EARTH PARTS, FACTORIES & WORLD)', 'success');
+      }
     } catch {
-      s.addLog('SAVE FAILED: LOCAL STORAGE UNAVAILABLE', 'alert');
+      if (!silent) s.addLog('SAVE FAILED: LOCAL STORAGE UNAVAILABLE', 'alert');
     }
   },
 
-  loadGame: () => {
+  loadGame: (silent = false) => {
     try {
       const raw = localStorage.getItem(SAVE_KEY);
       if (!raw) return false;
       const data = JSON.parse(raw);
-      starshipAudio.playSuccess();
-      set({ ...data, velocity: [0, 0, 0], throttle: 0, autopilot: false });
-      get().addLog('SAVED SIMULATION STATE RESTORED', 'success');
+
+      // Merge any newly added story/deep-space missions into older saves
+      const savedMissions: Mission[] = Array.isArray(data.missions) ? data.missions : [];
+      const mergedMissions = [
+        ...savedMissions,
+        ...INITIAL_MISSIONS.filter((m) => !savedMissions.some((sm) => sm.id === m.id)),
+      ];
+
+      set({
+        ...data,
+        missions: mergedMissions,
+        velocity: [0, 0, 0],
+        angularVelocity: [0, 0, 0],
+        throttle: 0,
+        autopilot: false,
+        hyperCruise: false,
+      });
+
+      // Re-apply saved HUD color theme CSS variables
+      if (data.hudTheme) {
+        get().setHudTheme(data.hudTheme);
+      }
+
+      if (!silent) {
+        starshipAudio.playSuccess();
+        get().addLog('FULL SAVED SIMULATION RESTORED (EARTH PARTS, FACTORIES & WORLD)', 'success');
+      }
       return true;
     } catch {
       return false;
+    }
+  },
+
+  clearSavedGame: () => {
+    try {
+      localStorage.removeItem(SAVE_KEY);
+      starshipAudio.playAlert('LOW');
+      get().addLog('LOCAL SAVE DATA CLEARED — REFRESH TO START FRESH', 'warn');
+    } catch {
+      // ignore
     }
   },
 

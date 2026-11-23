@@ -95,6 +95,45 @@ export const EarthSurfaceHUD: React.FC = () => {
     );
   }
 
+  // 1B. ORBITAL LIFTOFF / ASCENT CUTSCENE OVERLAY
+  if (playerMode === 'earth_liftoff') {
+    const altitude = Math.round(Math.pow(earthCutsceneProgress, 2) * 45000);
+    const phase =
+      earthCutsceneProgress < 0.35
+        ? 'MAIN THRUSTERS IGNITED // CLEARING NEW GENEVA PAD 01'
+        : earthCutsceneProgress < 0.72
+          ? 'BREAKING TROPOSPHERE // MAX-Q ACCELERATION'
+          : 'ORBITAL INSERTION COMPLETE // ENTERING SOLARIS PRIME';
+
+    return (
+      <div style={{ position: 'fixed', inset: 0, zIndex: 25, pointerEvents: 'none' }}>
+        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 52, background: '#02050a' }} />
+        <div
+          style={{
+            position: 'absolute',
+            bottom: 0,
+            left: 0,
+            right: 0,
+            height: 64,
+            background: '#02050a',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '0 28px',
+          }}
+        >
+          <div style={{ fontFamily: 'var(--font-display)', fontSize: 12, color: '#fbbf24', letterSpacing: '0.2em' }}>
+            {shipName} // ORBITAL ASCENT SEQUENCE
+          </div>
+          <div style={{ fontSize: 11, color: '#6ee7b7', letterSpacing: '0.14em' }}>{phase}</div>
+          <div style={{ fontFamily: 'var(--font-display)', fontSize: 13, color: '#fff' }}>
+            ALT: {altitude.toLocaleString()} m
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   const aeroParts = EARTH_SHOP_PARTS.filter((p) => p.slot === 'aero');
   const noseParts = EARTH_SHOP_PARTS.filter((p) => p.slot === 'nose');
   const roofParts = EARTH_SHOP_PARTS.filter((p) => p.slot === 'roof');

@@ -3,7 +3,7 @@ import { useFrame } from '@react-three/fiber';
 import { Html, Stars } from '@react-three/drei';
 import * as THREE from 'three';
 import { getNpcPosition, getStarSystem, SpaceObject } from '../data/starSystems';
-import { useShipStore } from '../store/useShipStore';
+import { ExplosionFx, SPACE_RACE_GATES, useShipStore } from '../store/useShipStore';
 import { getPlanetTexture } from '../utils/proceduralTextures';
 import { RemoteShipModel } from './RemoteShipModel';
 
@@ -103,13 +103,28 @@ const StationMesh: React.FC<{ obj: SpaceObject; selected: boolean }> = ({ obj, s
           <meshBasicMaterial color={obj.color} />
         </mesh>
       </group>
-      {/* Lower Counter-Rotating Solar Array Ring */}
+      {/* Lower Counter-Rotating Solar Array Ring + Extended Solar Wings */}
       <group ref={lowerRingRef} position={[0, -10, 0]} rotation={[Math.PI / 2, 0, 0]}>
         <mesh>
           <torusGeometry args={[15, 1.5, 10, 28]} />
           <meshStandardMaterial color="#1e3a8a" metalness={0.7} roughness={0.3} />
         </mesh>
+        <mesh position={[-24, 0, 0]}>
+          <boxGeometry args={[18, 5.2, 0.4]} />
+          <meshStandardMaterial color="#1d4ed8" emissive="#1e40af" emissiveIntensity={0.45} metalness={0.75} roughness={0.2} />
+        </mesh>
+        <mesh position={[24, 0, 0]}>
+          <boxGeometry args={[18, 5.2, 0.4]} />
+          <meshStandardMaterial color="#1d4ed8" emissive="#1e40af" emissiveIntensity={0.45} metalness={0.75} roughness={0.2} />
+        </mesh>
       </group>
+      {/* Docking Approach Strobe Pylons */}
+      {[-12, 12].map((x) => (
+        <mesh key={x} position={[x, -26, 0]}>
+          <sphereGeometry args={[0.9, 8, 8]} />
+          <meshBasicMaterial color="#10b981" />
+        </mesh>
+      ))}
       {/* Docking Beacon */}
       <mesh position={[0, 25, 0]}>
         <octahedronGeometry args={[3.2, 0]} />
@@ -335,10 +350,43 @@ const EmpWave: React.FC = () => {
   );
 };
 
+const ExplosionMesh: React.FC<{ fx: ExplosionFx }> = ({ fx }) => {
+  const coreRef = useRef<THREE.Mesh>(null);
+  const ringRef = useRef<THREE.Mesh>(null);
+  useFrame(() => {
+    const age = (Date.now() - fx.createdAt) / 1400;
+    const t = Math.min(1, Math.max(0, age));
+    if (coreRef.current) {
+      coreRef.current.scale.setScalar((0.6 + t * 14) * fx.scale);
+      (coreRef.current.material as THREE.MeshBasicMaterial).opacity = Math.max(0, (1 - t) * 0.9);
+    }
+    if (ringRef.current) {
+      ringRef.current.scale.setScalar((1 + t * 24) * fx.scale);
+      (ringRef.current.material as THREE.MeshBasicMaterial).opacity = Math.max(0, (1 - t) * 0.75);
+    }
+  });
+  return (
+    <group position={fx.position}>
+      <mesh ref={coreRef}>
+        <icosahedronGeometry args={[1.6, 2]} />
+        <meshBasicMaterial color="#f97316" transparent opacity={0.9} blending={THREE.AdditiveBlending} depthWrite={false} />
+      </mesh>
+      <mesh ref={ringRef} rotation={[Math.PI / 2, 0.3, 0]}>
+        <torusGeometry args={[1.5, 0.16, 8, 28]} />
+        <meshBasicMaterial color="#fef08a" transparent opacity={0.75} blending={THREE.AdditiveBlending} depthWrite={false} />
+      </mesh>
+      <pointLight color="#f97316" distance={140 * fx.scale} intensity={8 * fx.scale} />
+    </group>
+  );
+};
+
 export const SpaceEnvironment: React.FC = () => {
   const currentSystemId = useShipStore((s) => s.currentSystemId);
   const selectedTargetId = useShipStore((s) => s.selectedTargetId);
   const raiders = useShipStore((s) => s.raiders);
+  const explosions = useShipStore((s) => s.explosions);
+  const raceActive = useShipStore((s) => s.raceActive);
+  const raceGateIndex = useShipStore((s) => s.raceGateIndex);
   const remotePlayers = useShipStore((s) => s.remotePlayers);
   const waypoints = useShipStore((s) => s.waypoints);
   const deployedSatellites = useShipStore((s) => s.deployedSatellites);
@@ -471,38 +519,120 @@ export const SpaceEnvironment: React.FC = () => {
         </group>
       ))}
 
-      {/* Hostile Pirate Raider Drones */}
+      {/* Hostile Pirate Raider Gunships & Leviathan Dreadnought Bosses */}
       {raiders
         .filter((r) => r.systemId === currentSystemId && r.hp > 0)
-        .map((r) => (
-          <group
-            key={r.id}
-            ref={(el) => {
-              raiderRefs.current[r.id] = el;
-            }}
-          >
-            <mesh rotation={[Math.PI / 2, 0, 0]}>
-              <coneGeometry args={[2.8, 9.5, 4]} />
-              <meshStandardMaterial color="#450a0a" metalness={0.8} roughness={0.25} emissive="#dc2626" emissiveIntensity={0.5} />
-            </mesh>
-            <pointLight color="#ef4444" distance={65} intensity={3} />
-            <Html position={[0, 4.2, 0]} center distanceFactor={60}>
-              <div
-                style={{
-                  background: 'rgba(40, 6, 8, 0.85)',
-                  border: '1px solid #ef4444',
-                  color: '#fca5a5',
-                  padding: '2px 6px',
-                  fontSize: 9,
-                  fontFamily: 'var(--font-mono)',
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                ☠ {r.name} ({r.hp} HP)
-              </div>
-            </Html>
-          </group>
-        ))}
+        .map((r) => {
+          const isBoss = r.name.includes('LEVIATHAN') || r.maxHp >= 500;
+          const sc = isBoss ? 2.6 : 1.15;
+          return (
+            <group
+              key={r.id}
+              scale={sc}
+              ref={(el) => {
+                raiderRefs.current[r.id] = el;
+              }}
+            >
+              {/* Armored Fuselage Spine */}
+              <mesh rotation={[Math.PI / 2, 0, 0]}>
+                <coneGeometry args={[2.4, 10.5, 6]} />
+                <meshStandardMaterial color={isBoss ? '#3b0764' : '#3f0a0a'} metalness={0.85} roughness={0.22} />
+              </mesh>
+              {/* Swept Crimson Attack Wings */}
+              <mesh position={[-4.2, -0.3, 1.4]} rotation={[0.15, 0.35, -0.25]}>
+                <boxGeometry args={[6.2, 0.45, 3.2]} />
+                <meshStandardMaterial color="#1f2937" metalness={0.85} roughness={0.3} />
+              </mesh>
+              <mesh position={[4.2, -0.3, 1.4]} rotation={[0.15, -0.35, 0.25]}>
+                <boxGeometry args={[6.2, 0.45, 3.2]} />
+                <meshStandardMaterial color="#1f2937" metalness={0.85} roughness={0.3} />
+              </mesh>
+              {/* Twin Wingtip Plasma Cannons */}
+              {[-6.5, 6.5].map((wx) => (
+                <mesh key={wx} position={[wx, -0.5, -0.6]} rotation={[Math.PI / 2, 0, 0]}>
+                  <cylinderGeometry args={[0.28, 0.36, 4.4, 8]} />
+                  <meshStandardMaterial color="#ef4444" emissive="#dc2626" emissiveIntensity={0.9} />
+                </mesh>
+              ))}
+              {/* Glowing Reactor Core & Aft Thruster */}
+              <mesh position={[0, 0.6, 1.5]}>
+                <octahedronGeometry args={[1.35, 0]} />
+                <meshBasicMaterial color={isBoss ? '#c084fc' : '#f97316'} />
+              </mesh>
+              <mesh position={[0, 0, 5.6]}>
+                <sphereGeometry args={[1.15, 10, 10]} />
+                <meshBasicMaterial color="#ef4444" />
+              </mesh>
+              <pointLight color={isBoss ? '#a855f7' : '#ef4444'} distance={isBoss ? 180 : 80} intensity={isBoss ? 6 : 3.5} />
+              <Html position={[0, 4.8, 0]} center distanceFactor={65}>
+                <div
+                  style={{
+                    background: isBoss ? 'rgba(59, 7, 100, 0.9)' : 'rgba(40, 6, 8, 0.85)',
+                    border: `1px solid ${isBoss ? '#c084fc' : '#ef4444'}`,
+                    color: isBoss ? '#e9d5ff' : '#fca5a5',
+                    padding: '2px 7px',
+                    fontSize: isBoss ? 10.5 : 9,
+                    fontFamily: 'var(--font-mono)',
+                    whiteSpace: 'nowrap',
+                    fontWeight: isBoss ? 700 : 500,
+                  }}
+                >
+                  {isBoss ? '👑 ' : '☠ '}
+                  {r.name} ({r.hp}/{r.maxHp} HP)
+                </div>
+              </Html>
+            </group>
+          );
+        })}
+
+      {/* 3D Expanding Fireball & Shockwave Explosions */}
+      {explosions.map((fx) => (
+        <ExplosionMesh key={fx.id} fx={fx} />
+      ))}
+
+      {/* Orbital Boost-Ring Space Race Circuit (Solaris Prime) */}
+      {raceActive &&
+        currentSystemId === 'solaris-prime' &&
+        SPACE_RACE_GATES.map((pos, idx) => {
+          const isCurrent = idx === raceGateIndex;
+          const isPassed = idx < raceGateIndex;
+          const ringColor = isCurrent ? '#fbbf24' : isPassed ? '#10b981' : '#00e5ff';
+          return (
+            <group key={idx} position={pos}>
+              <mesh>
+                <torusGeometry args={[18, isCurrent ? 1.4 : 0.85, 12, 40]} />
+                <meshStandardMaterial
+                  color="#0f172a"
+                  emissive={ringColor}
+                  emissiveIntensity={isCurrent ? 2.2 : 0.7}
+                  metalness={0.85}
+                  roughness={0.2}
+                />
+              </mesh>
+              <mesh>
+                <torusGeometry args={[15.5, 0.3, 8, 36]} />
+                <meshBasicMaterial color={ringColor} transparent opacity={isCurrent ? 0.95 : 0.45} />
+              </mesh>
+              {isCurrent && <pointLight color="#fbbf24" distance={140} intensity={6} />}
+              <Html position={[0, 22, 0]} center distanceFactor={85}>
+                <div
+                  style={{
+                    background: isCurrent ? 'rgba(120, 53, 15, 0.92)' : 'rgba(2, 8, 18, 0.78)',
+                    border: `1px solid ${ringColor}`,
+                    color: ringColor,
+                    padding: '2px 8px',
+                    fontSize: isCurrent ? 11 : 9,
+                    fontWeight: 700,
+                    fontFamily: 'var(--font-mono)',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {isCurrent ? `▶ GATE ${idx + 1}/${SPACE_RACE_GATES.length} — FLY THROUGH!` : isPassed ? `✓ GATE ${idx + 1}` : `GATE ${idx + 1}`}
+                </div>
+              </Html>
+            </group>
+          );
+        })}
 
       {/* Live Remote Multiplayer Fleet Ships (Only players flying their own ship!) */}
       {Object.values(remotePlayers)

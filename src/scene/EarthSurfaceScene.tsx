@@ -264,6 +264,47 @@ export const EarthSurfaceScene: React.FC = () => {
       return;
     }
 
+    // 1B. ORBITAL LIFTOFF / ASCENT CUTSCENE FROM EARTH
+    if (s.playerMode === 'earth_liftoff') {
+      cutsceneTime.current += dt;
+      const duration = 3.5;
+      const t = Math.min(1, cutsceneTime.current / duration);
+      const easeIn = t * t * t;
+      const altitude = 2.4 + easeIn * 185;
+      const zClimb = -easeIn * 65;
+
+      if (shipDescentRef.current) {
+        shipDescentRef.current.position.set(0, altitude, zClimb);
+        shipDescentRef.current.rotation.set(-t * 0.52, 0, Math.sin(t * 24) * 0.025);
+      }
+
+      const shake = (1 - t) * 0.45;
+      camera.position.set(
+        28 + Math.sin(state.clock.elapsedTime * 42) * shake,
+        6 + easeIn * 24 + Math.cos(state.clock.elapsedTime * 38) * shake,
+        36 + easeIn * 14
+      );
+      camera.lookAt(0, altitude + 4, zClimb);
+
+      s.applyTick({ earthCutsceneProgress: t });
+
+      if (t >= 1) {
+        starshipAudio.playSuccess();
+        s.addLog('ORBITAL INSERTION COMPLETE — WELCOME BACK TO SOLARIS PRIME', 'success');
+        s.applyTick({
+          playerMode: 'flight',
+          landedPlanetId: null,
+          activeView: 'bridge',
+          currentSystemId: 'solaris-prime',
+          position: [190, 20, -225],
+          velocity: [0, 0, -28],
+          quaternion: [0, 0, 0, 1],
+          earthCutsceneProgress: 0,
+        });
+      }
+      return;
+    }
+
     // 2. EXPLORABLE EARTH CITY & SPACEPORT WALKING
     if (shipDescentRef.current) {
       shipDescentRef.current.position.set(0, 2.4, 0);

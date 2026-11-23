@@ -16,10 +16,71 @@ export const InteriorEvaHUD: React.FC = () => {
     lockedRooms,
     boardedHostId,
     remotePlayers,
+    speed,
     setPlayerMode,
     leaveBoardedShip,
+    recoverFromEscapePod,
     setActiveView,
   } = useShipStore();
+
+  if (playerMode === 'escape_pod') {
+    return (
+      <div style={{ position: 'fixed', inset: 0, zIndex: 18, pointerEvents: 'none' }}>
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            boxShadow: 'inset 0 0 120px rgba(255, 77, 26, 0.25)',
+            border: '5px solid rgba(180, 166, 139, 0.35)',
+            pointerEvents: 'none',
+          }}
+        />
+        <div
+          style={{
+            position: 'absolute',
+            top: 14,
+            left: 16,
+            right: 16,
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            pointerEvents: 'auto',
+          }}
+        >
+          <div className="star-panel" style={{ padding: '8px 14px', borderColor: '#f97316' }}>
+            <div style={{ fontFamily: 'var(--font-display)', fontSize: 11, color: '#fb923c', letterSpacing: '0.18em' }}>
+              CP-12 ESCAPE POD // EMERGENCY EJECTION ACTIVE
+            </div>
+            <div style={{ fontSize: 10, color: '#fed7aa', marginTop: 2 }}>
+              DISTRESS TRANSPONDER BROADCASTING • VELOCITY: {Math.round(speed)} m/s
+            </div>
+          </div>
+          <button className="star-btn active" onClick={recoverFromEscapePod}>
+            RESCUE / RETURN TO STARSHIP
+          </button>
+        </div>
+        <div
+          className="star-panel"
+          style={{
+            position: 'absolute',
+            bottom: 14,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            padding: '7px 16px',
+            fontSize: 9.5,
+            color: '#fed7aa',
+            display: 'flex',
+            gap: 16,
+          }}
+        >
+          <span>W/S: POD THRUSTERS</span>
+          <span>A/D: ROLL</span>
+          <span>ARROWS: STEER</span>
+          <span>SPACE: RETRO-BRAKE</span>
+        </div>
+      </div>
+    );
+  }
 
   if (playerMode === 'interior') {
     const room = getRoomById(interiorRoomId);

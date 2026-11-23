@@ -2,7 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { getStarSystem, HazardZone } from '../data/starSystems';
-import { ENGINE_MODELS, SHIP_CLASSES, useShipStore } from '../store/useShipStore';
+import { ENGINE_MODELS, SHIP_CLASSES, SPACE_RACE_GATES, useShipStore } from '../store/useShipStore';
 import { starshipAudio } from '../utils/audio';
 import { PlayerShipModel } from './PlayerShipModel';
 import { CockpitInterior } from './CockpitInterior';
@@ -62,6 +62,7 @@ export const FlightController: React.FC = () => {
           if (code === 'KeyG') s.activateTractorBeam();
           if (code === 'KeyV') s.toggleCloak();
           if (code === 'KeyP') s.fireEmpShockwave();
+          if (code === 'KeyH') s.toggleHyperCruise();
         }
       }
       keys[code] = true;
@@ -303,12 +304,16 @@ export const FlightController: React.FC = () => {
       upVec.current.set(0, 1, 0).applyQuaternion(quat.current);
 
       if (s.enginesOnline && s.fuel > 0.05) {
-        const accelBase = 48 * enginePowerEff * overheatThrottle;
+        // Hyper-Cruise scales massively with upgraded engines/boosters so 25M–100M m planets are reachable in seconds!
+        const hyperMult = s.hyperCruise
+          ? 240 * (s.installedEngineId === 'singularity-warp' ? 4.5 : s.installedEngineId === 'nova-antimatter' ? 2.5 : 1.0)
+          : 1.0;
+        const accelBase = 48 * enginePowerEff * overheatThrottle * hyperMult;
         const boostMult = boostActive ? 2.15 * boostUpgMult : 1.0;
         if (Math.abs(throttle) > 0.01) {
           velVec.current.addScaledVector(forwardVec.current, throttle * accelBase * boostMult * dt);
-        } else if (boostActive) {
-          velVec.current.addScaledVector(forwardVec.current, accelBase * 1.6 * boostUpgMult * dt);
+        } else if (boostActive || s.hyperCruise) {
+          velVec.current.addScaledVector(forwardVec.current, accelBase * (boostActive ? 1.6 * boostUpgMult : 1.0) * dt);
         }
         if (strafeInput !== 0) {
           velVec.current.addScaledVector(rightVec.current, strafeInput * accelBase * 0.55 * dt);
@@ -360,7 +365,10 @@ export const FlightController: React.FC = () => {
       }
     }
 
-    const maxSpeed = (boostActive ? 155 : 92) * Math.max(0.35, enginePowerEff) * overheatThrottle;
+    const hyperCapMult = s.hyperCruise
+      ? 260 * (s.installedEngineId === 'singularity-warp' ? 5.0 : s.installedEngineId === 'nova-antimatter' ? 2.8 : 1.0)
+      : 1.0;
+    const maxSpeed = (boostActive ? 155 : 92) * Math.max(0.35, enginePowerEff) * overheatThrottle * hyperCapMult;
     if (velVec.current.length() > maxSpeed && s.flightAssist) {
       velVec.current.setLength(THREE.MathUtils.lerp(velVec.current.length(), maxSpeed, dt * 3));
     }
@@ -583,9 +591,33 @@ export const FlightController: React.FC = () => {
       hudTargetScreenPos.visible = false;
     }
 
+    // Space Race Gate Detection & Turbo Boost Kick + Explosion Cleanup
+    let raceTimer = s.raceTimer;
+    if (s.raceActive && s.currentSystemId === 'solaris-prime') {
+      raceTimer += dt;
+      const gate = SPACE_RACE_GATES[s.raceGateIndex];
+      if (gate) {
+        const gd = Math.hypot(
+          posVec.current.x - gate[0],
+          posVec.current.y - gate[1],
+          posVec.current.z - gate[2]
+        );
+        if (gd < 28) {
+          forwardVec.current.set(0, 0, -1).applyQuaternion(quat.current);
+          velVec.current.addScaledVector(forwardVec.current, 85);
+          s.advanceRaceGate();
+        }
+      }
+    }
+
+    const nowMs = Date.now();
+    const activeExplosions =
+      s.explosions.length > 0 ? s.explosions.filter((fx) => nowMs - fx.createdAt < 1400) : s.explosions;
+
     // 11. Commit Tick
     const tickPatch: Partial<typeof s> = {
       simTime: nextSimTime,
+      raceTimer,
       nextEmergencyCheck,
       position: [posVec.current.x, posVec.current.y, posVec.current.z],
       velocity: [velVec.current.x, velVec.current.y, velVec.current.z],
@@ -622,6 +654,7 @@ export const FlightController: React.FC = () => {
       repairActive,
     };
     if (emergenciesChanged) tickPatch.activeEmergencies = updatedEmergencies;
+    if (activeExplosions.length !== s.explosions.length) tickPatch.explosions = activeExplosions;
     s.applyTick(tickPatch);
   });
 

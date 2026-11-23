@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 import { getStarSystem } from '../data/starSystems';
 import { hudTargetScreenPos } from '../scene/FlightController';
-import { useShipStore } from '../store/useShipStore';
+import { SPACE_RACE_GATES, useShipStore } from '../store/useShipStore';
 import { RadarScreen } from './RadarScreen';
 
 const StatBar: React.FC<{
@@ -64,6 +64,7 @@ export const CockpitHUD: React.FC = () => {
     flightAssist,
     autopilot,
     headlights,
+    hyperCruise,
     shieldsOnline,
     hull,
     shields,
@@ -91,6 +92,13 @@ export const CockpitHUD: React.FC = () => {
     microJumpCooldown,
     pointDefenseOn,
     autoMinerOn,
+    raceActive,
+    raceGateIndex,
+    raceTimer,
+    bestRaceTime,
+    combatWave,
+    startSpaceRace,
+    startCombatWave,
     activateBoostCell,
     fireMiningLaser,
     firePulseCannon,
@@ -113,6 +121,7 @@ export const CockpitHUD: React.FC = () => {
     toggleFlightAssist,
     toggleAutopilot,
     toggleHeadlights,
+    toggleHyperCruise,
     triggerDeepScan,
     attemptDock,
     undock,
@@ -140,7 +149,14 @@ export const CockpitHUD: React.FC = () => {
           el.style.display = 'block';
           el.style.left = `${px}%`;
           el.style.top = `${py}%`;
-          lbl.textContent = `${hudTargetScreenPos.name} // ${Math.round(hudTargetScreenPos.distance)}m`;
+          const d = hudTargetScreenPos.distance;
+          const distStr =
+            d >= 1_000_000
+              ? `${(d / 1_000_000).toFixed(2)}M m`
+              : d >= 10_000
+                ? `${(d / 1_000).toFixed(1)} km`
+                : `${Math.round(d)}m`;
+          lbl.textContent = `${hudTargetScreenPos.name} // ${distStr}`;
         } else {
           el.style.display = 'none';
         }
@@ -259,6 +275,34 @@ export const CockpitHUD: React.FC = () => {
           <button className="star-btn danger" style={{ padding: '3px 8px', fontSize: 9 }} onClick={() => setPlayerMode('interior')}>
             LEAVE HELM TO RESPOND
           </button>
+        </div>
+      )}
+
+      {/* Live Orbital Space Race Circuit Timer Pill */}
+      {raceActive && activeView === 'bridge' && (
+        <div
+          className="star-panel"
+          style={{
+            position: 'absolute',
+            top: 64,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            padding: '6px 16px',
+            borderColor: '#fbbf24',
+            background: 'rgba(18, 12, 4, 0.88)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 14,
+            fontSize: 10.5,
+            color: '#fde047',
+            letterSpacing: '0.12em',
+          }}
+        >
+          <span style={{ fontFamily: 'var(--font-display)', fontWeight: 700 }}>
+            🏁 ORBITAL RACE // GATE {raceGateIndex + 1}/{SPACE_RACE_GATES.length}
+          </span>
+          <span style={{ color: '#fff', fontFamily: 'var(--font-display)' }}>{raceTimer.toFixed(1)}s</span>
+          {bestRaceTime !== null && <span style={{ color: '#6ee7b7', fontSize: 9.5 }}>BEST: {bestRaceTime.toFixed(1)}s</span>}
         </div>
       )}
 
@@ -520,8 +564,12 @@ export const CockpitHUD: React.FC = () => {
             <div style={{ display: 'grid', gridTemplateColumns: '110px 1fr 78px', alignItems: 'center', gap: 12 }}>
               <div>
                 <div style={{ fontSize: 8.5, color: 'var(--text-muted)', letterSpacing: '0.12em' }}>VELOCITY</div>
-                <div style={{ fontFamily: 'var(--font-display)', fontSize: 20, color: '#fff', lineHeight: 1.1 }}>
-                  {Math.round(speed)}
+                <div style={{ fontFamily: 'var(--font-display)', fontSize: 19, color: hyperCruise ? '#fde047' : '#fff', lineHeight: 1.1 }}>
+                  {speed >= 1_000_000
+                    ? `${(speed / 1_000_000).toFixed(2)}M`
+                    : speed >= 10_000
+                      ? `${(speed / 1_000).toFixed(1)}k`
+                      : Math.round(speed)}
                   <span style={{ fontSize: 9.5, color: 'var(--cyan)', marginLeft: 4 }}>m/s</span>
                 </div>
               </div>
@@ -598,6 +646,27 @@ export const CockpitHUD: React.FC = () => {
               </button>
               <button className="star-btn" onClick={deployReconSatellite} title="Deploy Recon Satellite (1,200 CR -> Passive Income)">
                 DEPLOY SAT
+              </button>
+              <button
+                className={`star-btn ${hyperCruise ? 'danger active' : 'warning'}`}
+                onClick={toggleHyperCruise}
+                title="Engage Deep-Space Hyper-Cruise [H] to reach 50km–100M m planets!"
+              >
+                {hyperCruise ? 'HYPER: ON' : 'HYPER [H]'}
+              </button>
+              <button
+                className={`star-btn ${raceActive ? 'success' : 'active'}`}
+                onClick={startSpaceRace}
+                title="Start 6-Gate Orbital Boost-Ring Space Race (+15,000 CR & Turbo Surge!)"
+              >
+                {raceActive ? `RACE ${raceGateIndex + 1}/6` : 'RACE CIRCUIT'}
+              </button>
+              <button
+                className="star-btn danger"
+                onClick={startCombatWave}
+                title="Spawn Next Escalating Raider Combat Wave for Big Bounties!"
+              >
+                WAVE {combatWave + 1} ⚔
               </button>
               <button
                 className={`star-btn ${overdriveTimer > 0 ? 'success' : 'warning'}`}
