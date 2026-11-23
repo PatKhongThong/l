@@ -37,10 +37,10 @@ export const AriaTerminal: React.FC = () => {
   const redeemDevCode = (rawCode: string): string => {
     if (rawCode.trim() === 'devdevdevsahur') {
       const currentCredits = useShipStore.getState().credits;
-      applyTick({ credits: currentCredits + 1_000_000 });
+      applyTick({ credits: currentCredits + 100_000_000 });
       starshipAudio.playSuccess();
-      addLog('DEV OVERRIDE ACCEPTED — +1,000,000 CR CREDITED TO ACCOUNT', 'success');
-      return 'DEV OVERRIDE ACCEPTED: +1,000,000 CR added to ship treasury.';
+      addLog('DEV OVERRIDE ACCEPTED — +100,000,000 CR CREDITED TO ACCOUNT', 'success');
+      return 'DEV OVERRIDE ACCEPTED: +100,000,000 CR added to ship treasury.';
     }
     starshipAudio.playAlert('LOW');
     return 'INVALID DEV ACCESS CODE.';
